@@ -1,8 +1,9 @@
 ---
-title: "Untitled"
+title: "Baseball Analysis"
 author: "Chris Collum"
-date: "2026-09-28"
-output: html_document
+output: github_document
+---
+
 ---
 
 ```{r setup, include=FALSE}
