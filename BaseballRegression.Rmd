@@ -1,0 +1,90 @@
+---
+title: "BaseballRegression"
+author: "Chris Collum"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE, 
+  message = FALSE, 
+  fig.width = 8, 
+  fig.height = 5
+)
+```
+
+Install Packages if needed, and Load
+
+```{r First}
+# Install packages if not already present:
+# install.packages(c("Lahman", "tidyverse", "broom", "pROC"))
+
+library(Lahman)
+library(tidyverse)
+library(broom)
+library(pROC)
+
+# Load the Teams dataset
+data("Teams")
+
+# Convert to tibble for clean console printing
+teams <- as_tibble(Teams)
+```
+
+Can we Predict if a team will win the World Series or not?
+
+```{r Predict}
+
+# 1. Prepare and filter data
+# Focus on modern playoff-era teams (1969-present) that reached the postseason
+playoff_teams <- Teams %>%
+  filter(yearID >= 1969, yearID != 1994) %>% # Exclude 1994 strike (no WS)
+  filter(DivWin == "Y" | WCWin == "Y") %>%
+  mutate(
+    # Target variable: 1 if won World Series, 0 otherwise
+    WS_Winner = ifelse(WSWin == "Y", 1, 0),
+    # Feature engineering from regular season metrics
+    WinPct    = W / G,
+    RunDiff   = R - RA,
+    R_per_G   = R / G,
+    RA_per_G  = RA / G,
+    HR_per_G  = HR / G
+  ) %>%
+  select(yearID, teamID, name, WS_Winner, WinPct, RunDiff, R_per_G, RA_per_G, ERA, HR_per_G)
+
+# 2. Time-based Train / Test Split
+# Train on 1969–2010, Test on 2011–present
+train_df <- playoff_teams %>% filter(yearID <= 2010)
+test_df  <- playoff_teams %>% filter(yearID > 2010)
+
+# 3. Fit a Logistic Regression Model
+ws_model <- glm(
+  WS_Winner ~ WinPct + RunDiff + ERA + HR_per_G,
+  data = train_df,
+  family = binomial(link = "logit")
+)
+
+summary(ws_model)
+
+# 4. Generate Predicted Probabilities on Test Data
+test_df <- test_df %>%
+  mutate(pred_prob = predict(ws_model, newdata = test_df, type = "response"))
+
+# 5. Evaluate: Pick the Favorite for Each Year
+predicted_champs <- test_df %>%
+  group_by(yearID) %>%
+  slice_max(order_by = pred_prob, n = 1) %>%
+  select(yearID, Predicted_Champ = name, pred_prob, Actual_Result = WS_Winner)
+
+# View model selections
+print(predicted_champs)
+
+# Accuracy of top pick
+fav_accuracy <- mean(predicted_champs$Actual_Result == 1)
+cat("Proportion of seasons where the model's top pick won the WS:", round(fav_accuracy, 3), "\n")
+
+# 6. Overall Model Discrimination (ROC-AUC)
+roc_obj <- roc(test_df$WS_Winner, test_df$pred_prob)
+cat("Test ROC-AUC:", round(auc(roc_obj), 3), "\n")
+```

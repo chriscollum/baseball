@@ -7,25 +7,106 @@ output: github_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE, 
+  message = FALSE, 
+  fig.width = 8, 
+  fig.height = 5
+)
 ```
 
-## R Markdown
+Install Packages if needed, and Load
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r First}
+# Install packages if not already present:
+# install.packages(c("Lahman", "tidyverse", "scales"))
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+library(Lahman)
+library(tidyverse)
+library(scales)
 
-```{r cars}
-summary(cars)
+# Load the Teams dataset
+data("Teams")
+
+# Convert to tibble for clean console printing
+teams <- as_tibble(Teams)
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+Structure of Data
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r Structure}
+# Dataset dimensions
+dim(teams)
+
+# Glimpse variable types and names
+glimpse(teams)
+
+# Range of years covered
+range(teams$yearID)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Trim Some Data out
+
+```{r TrimData}
+teams_filter <- teams %>%
+  filter(yearID >= 1875) %>%
+  mutate(
+    WinPct = round(W / G, 3),
+    RunDiff = R - RA
+  ) %>%
+  select(yearID, lgID, teamID, name, G, W, L, R, RA, RunDiff, WinPct, HR, ERA, WSWin)
+
+head(teams_filter)
+```
+
+## Exploring the Data
+
+Run Differential and Wins
+
+```{r Rundiffandwins}
+ggplot(teams_filter, aes(x = RunDiff, y = W)) +
+  geom_point(alpha = 0.35, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  geom_hline(yintercept = 81, linetype = "dashed", color = "gray50") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "Wins vs. Run Differential (1901–Present)",
+    subtitle = "Teams that score more runs than they allow predictably exceed .500",
+    x = "Run Differential (Runs Scored - Runs Allowed)",
+    y = "Total Wins"
+  ) +
+  theme_minimal()
+```
+
+Home Runs Over Time
+
+```{r HRoT}
+teams_filter %>%
+  group_by(yearID) %>%
+  summarize(mean_hr = mean(HR, na.rm = TRUE)) %>%
+  ggplot(aes(x = yearID, y = mean_hr)) +
+  geom_line(color = "forestgreen", linewidth = 1) +
+  geom_smooth(se = FALSE, color = "black", linetype = "dotted") +
+  labs(
+    title = "Average Team Home Runs per Season (1901–Present)",
+    subtitle = "",
+    x = "Season",
+    y = "Average HR per Team"
+  ) +
+  theme_minimal()
+```
+
+Best 10 Seasons Ever
+
+```{r T10seasons}
+teams_filter %>%
+  arrange(desc(W)) %>%
+  select(yearID, name, W, L, WinPct, RunDiff, WSWin) %>%
+  slice_head(n = 10) %>%
+  knitr::kable(
+    caption = "Top 10 Modern Single-Season Win Totals",
+    col.names = c("Year", "Team", "Wins", "Losses", "Win %", "Run Diff", "Won WS?")
+  )
+```
